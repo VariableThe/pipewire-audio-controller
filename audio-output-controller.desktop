@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Audio Output Controller
+Comment=Switch audio outputs between DAC/IEMs and speakers, and control volume
+Exec=/home/decon/.local/bin/audio-output-controller
+Icon=audio-volume-high
+Terminal=false
+Categories=AudioVideo;Audio;Settings;
+Keywords=audio;sound;volume;sink;device;dac;speakers;output;
+StartupWMClass=org.cachyos.AudioController
