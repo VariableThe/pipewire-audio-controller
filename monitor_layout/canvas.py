@@ -26,6 +26,7 @@ import cairo
 import gi
 
 gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
 gi.require_version("Pango", "1.0")
 gi.require_version("PangoCairo", "1.0")
 from gi.repository import Gdk, Gtk, Pango, PangoCairo  # noqa: E402
@@ -461,8 +462,11 @@ class RoomScene(Scene):
             cr.restore()
             label = (str(self.numbers.get(target.id, target.id)) if isinstance(target, Monitor)
                      else "S" + str(self.layout.peripherals.index(target) + 1))
-            _text(cr, label, x, y, 14, pal.fg, bold=True)
-            _text(cr, target.name, x, y+max(h*self.scale/2+14, 23), 11, pal.fg, alpha=0.78)
+            # A mono peripheral has a physical slot at its center. Keep its
+            # identifier above the card so the slot marker never covers it.
+            label_y = y if isinstance(target, Monitor) else y-h*self.scale/2-12
+            _text(cr, label, x, label_y, 14, pal.fg, bold=True)
+            _text(cr, target.name, x, y+max(h*self.scale/2+14, 23), 11, pal.fg, alpha=0.78, max_width=180)
             if not target.room_confirmed:
                 _text(cr, "Approximate", x, y+max(h*self.scale/2+28, 37), 9, pal.dim)
         # Physical slot positions come from the same model as gain preview.
