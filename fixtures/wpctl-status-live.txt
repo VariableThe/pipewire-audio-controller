@@ -1,0 +1,21 @@
+Audio
+ ├─ Devices:
+ │      40. Built-in Audio
+ │      41. ddHiFi USB Audio
+ │
+ ├─ Sinks:
+ │  *   51. ddHiFi USB Audio Analog Stereo  [vol: 0.65]
+ │      42. Left Monitor HDMI Output        [vol: 1.00]
+ │      43. Right Monitor DP Output         [vol: 1.00]
+ │
+ ├─ Sources:
+ │      52. ddHiFi USB Audio Analog Stereo  [vol: 1.00]
+ │
+ ├─ Filters:
+ │    - loopback-42-43
+ │      60. dual_monitor_sink                [Audio/Sink]
+ │
+ └─ Streams:
+        70. mpv Media Player
+             72. output_FL > dual_monitor_sink:playback_FL
+             73. output_FR > dual_monitor_sink:playback_FR

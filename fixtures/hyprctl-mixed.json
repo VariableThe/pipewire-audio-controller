@@ -1,0 +1,43 @@
+[
+  {
+    "id": 0,
+    "name": "DP-2",
+    "description": "ACME Ultrawide MAIN",
+    "width": 3440,
+    "height": 1440,
+    "refreshRate": 144.0,
+    "x": 0,
+    "y": 0,
+    "scale": 1.0,
+    "transform": 0,
+    "focused": true,
+    "widthMm": 800,
+    "heightMm": 335
+  },
+  {
+    "id": 1,
+    "name": "HDMI-A-2",
+    "description": "ACME Portrait Side",
+    "width": 1080,
+    "height": 1920,
+    "refreshRate": 60.0,
+    "x": 3440,
+    "y": 0,
+    "scale": 1.0,
+    "transform": 1,
+    "focused": false,
+    "widthMm": 477,
+    "heightMm": 268
+  },
+  {
+    "id": 2,
+    "name": "eDP-1",
+    "description": "Laptop Panel",
+    "width": 1920,
+    "height": 1080,
+    "x": 0,
+    "y": 1440,
+    "transform": 0,
+    "focused": false
+  }
+]

@@ -1,0 +1,21 @@
+HDMI-A-1 "ACME Display 27 LEFT"
+  Physical size: 597x336 mm2
+  Enabled: yes
+  Modes:
+    2560x1440 px, 59.951000 Hz (preferred, current)
+  Position: 0,0
+  Transform: normal
+  Scale: 1.000000
+  Adaptive Sync: disabled
+DP-1 "ACME Display 27 RIGHT"
+  Physical size: 597x336 mm2
+  Enabled: yes
+  Modes:
+    1920x1080 px, 60.000000 Hz (preferred)
+    2560x1440 px, 59.951000 Hz (current)
+  Position: 2560,0
+  Transform: 90
+  Scale: 1.000000
+  Adaptive Sync: disabled
+HDMI-A-9 "Disconnected dongle"
+  Enabled: no

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Monitor Layout
+Comment=Arrange displays and speakers, preview PipeWire routing, export configuration
+Exec=monitor-layout-gui
+Terminal=false
+Categories=AudioVideo;Audio;
+Icon=audio-speakers

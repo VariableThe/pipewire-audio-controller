@@ -1,0 +1,13 @@
+#!/bin/sh
+# Locate this script's companion files, whether run from the source tree or
+# from an installed copy, and start the GUI.
+set -eu
+
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# Source tree: scripts/../monitor-layout-gui.py
+if [ -x "$dir/../monitor-layout-gui.py" ]; then
+    base=$dir/..
+else
+    base=$dir
+fi
+exec python3 "$base/monitor-layout-gui.py" "$@"
