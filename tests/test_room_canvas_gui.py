@@ -263,3 +263,72 @@ def test_initial_view_rejects_unknown_value(broadway_display):
     from monitor_layout.gui import MonitorLayoutApp
     with pytest.raises(ValueError, match="initial_view"):
         MonitorLayoutApp(demo=True, initial_view="sideways")
+
+
+
+def _descendants(widget):
+    yield widget
+    child = widget.get_first_child()
+    while child is not None:
+        yield from _descendants(child)
+        child = child.get_next_sibling()
+
+
+def test_unmap_disconnected_output_keeps_target_geometry(room_window):
+    from gi.repository import Gtk
+    from monitor_layout.audiodev import AudioSink
+    window = room_window
+    ctl = window.controller
+    ctl.sinks = [AudioSink(900, "test_speaker", "Speaker", ["MONO"], kind="speaker")]
+    target = ctl.add_peripheral("test_speaker")
+    ctl.set_room_geometry(target.id, x=-45, y=20, yaw=30)
+    before = (target.room_x, target.room_y, target.room_yaw)
+    ctl.sinks = []
+    ctl.notify(False)
+    unmap = next(widget for widget in _descendants(window.group_outputs)
+                 if isinstance(widget, Gtk.Button) and widget.get_label() == "Unmap")
+    unmap.emit("clicked")
+    assert ctl.mapping_for(target.id) is None
+    assert ctl.layout.get(target.id) is target
+    assert (target.room_x, target.room_y, target.room_yaw) == before
+    assert not any(isinstance(widget, Gtk.Button) and widget.get_label() == "Unmap"
+                   for widget in _descendants(window.group_outputs))
+
+
+def test_same_name_rediscovery_rebuilds_metadata_and_candidates(room_window):
+    from gi.repository import Gtk, Adw
+    from monitor_layout.audiodev import AudioSink
+    window = room_window
+    ctl = window.controller
+    name = "same_named_output"
+    ctl.sinks = [AudioSink(900, name, "Old USB speaker", ["FL", "FR"], kind="speaker", transport="usb")]
+    mid = ctl.layout.monitors[0].id
+    ctl.map_device(mid, name)
+    old_rows = list(window._output_rows)
+    replacement = AudioSink(901, name, "New headphone profile", ["MONO"],
+                           kind="headphones", transport="bluetooth", form_factor="headphone")
+    ctl.sinks = [replacement]
+    ctl.notify(False)
+    assert window._output_rows[0] is not old_rows[0]
+    info = next(row for row in window._output_rows if row.get_title() == "Reported channels")
+    assert info.get_subtitle() == "MONO (New headphone profile)"
+    assert not any(row.get_title() == "Old USB speaker" for row in window._output_rows)
+    dropdowns = [widget for widget in _descendants(window.group_outputs)
+                 if isinstance(widget, Gtk.DropDown)]
+    assert dropdowns
+    assert all(drop.get_model().get_n_items() == 1 for drop in dropdowns)
+    # Same node/name again, now unknown: UI must bind the newly discovered
+    # object, not the old speaker's confirmation-bypassing callback.
+    ctl.unmap_device(mid)
+    unknown = AudioSink(901, name, "Unknown Bluetooth output", ["AUX0"], transport="bluetooth")
+    ctl.sinks = [unknown]
+    ctl.notify(False)
+    row = next(row for row in window._output_rows if row.get_title() == unknown.description)
+    button = next(widget for widget in _descendants(row)
+                  if isinstance(widget, Gtk.Button) and widget.get_label() == "Confirm speaker…")
+    button.emit("clicked")
+    dialog = next(w for w in Gtk.Window.list_toplevels()
+                  if isinstance(w, Adw.MessageDialog) and w.get_heading() == "Is this output a physical speaker?")
+    assert unknown.description in dialog.get_body()
+    dialog.emit("response", "cancel")
+    assert ctl.layout.peripherals == []

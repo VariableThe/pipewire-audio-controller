@@ -388,7 +388,12 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
                     mapping.speaker_confirmed if mapping else False,
                 )
             )
-        return (tuple(items), tuple(s.name for s in self.controller.sinks))
+        sinks = tuple(
+            (s.node_id, s.name, s.description, tuple(s.channels), s.is_virtual,
+             tuple(s.ports), s.kind, s.transport, s.form_factor)
+            for s in self.controller.sinks
+        )
+        return (tuple(items), sinks, self.controller.discovery_error)
 
     # -- displays list -------------------------------------------------------
 
@@ -640,6 +645,12 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
             )
             row = Adw.ActionRow(title=mon.name, subtitle=current or "no output mapped")
             row.add_suffix(drop)
+            if current:
+                unmap = Gtk.Button(label="Unmap")
+                unmap.set_valign(Gtk.Align.CENTER)
+                unmap.set_tooltip_text("Clear this output mapping; keep its placement")
+                unmap.connect("clicked", lambda _b, mid=mon.id: self.controller.unmap_device(mid))
+                row.add_suffix(unmap)
             self._track(group, row, self._output_rows)
 
             if current:
