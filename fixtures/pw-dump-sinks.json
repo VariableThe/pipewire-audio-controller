@@ -1,0 +1,111 @@
+[
+  {
+    "id": 42,
+    "type": "PipeWire:Interface:Node",
+    "version": 3,
+    "permissions": ["r", "w", "x", "m"],
+    "info": {
+      "max-input-ports": 0,
+      "max-output-ports": 2,
+      "props": {
+        "node.name": "alsa_output.pci-0000_01_00.1.pro-output-3",
+        "node.description": "Left Monitor HDMI Output",
+        "media.class": "Audio/Sink",
+        "audio.position": "FL,FR",
+        "device.name": "alsa_card.pci-0000_01_00.1",
+        "factory.name": "api.alsa.seq.boundary"
+      }
+    }
+  },
+  {
+    "id": 43,
+    "type": "PipeWire:Interface:Node",
+    "version": 3,
+    "permissions": ["r", "w", "x", "m"],
+    "info": {
+      "max-output-ports": 2,
+      "props": {
+        "node.name": "alsa_output.pci-0000_01_00.1.pro-output-7",
+        "node.description": "Right Monitor DP Output",
+        "media.class": "Audio/Sink",
+        "audio.position": "FL,FR",
+        "device.name": "alsa_card.pci-0000_01_00.1",
+        "api.alsa.path": "hw:0,7"
+      }
+    }
+  },
+  {
+    "id": 51,
+    "type": "PipeWire:Interface:Node",
+    "version": 3,
+    "permissions": ["r", "w", "x", "m"],
+    "info": {
+      "props": {
+        "node.name": "alsa_output.usb-ddHiFi.pro-output-0",
+        "node.description": "ddHiFi USB DAC",
+        "media.class": "Audio/Sink",
+        "audio.position": "FL,FR",
+        "device.name": "alsa_card.usb-ddHiFi"
+      }
+    }
+  },
+  {
+    "id": 77,
+    "type": "PipeWire:Interface:Node",
+    "version": 3,
+    "permissions": ["r", "w", "x", "m"],
+    "info": {
+      "props": {
+        "node.name": "dual_monitor_sink",
+        "node.description": "Dual Monitor Combined Sink",
+        "media.class": "Audio/Sink",
+        "audio.position": "FL,FR",
+        "node.virtual": true
+      }
+    }
+  },
+  {
+    "id": 90,
+    "type": "PipeWire:Interface:Port",
+    "version": 3,
+    "permissions": ["r", "m"],
+    "info": {
+      "direction": "output",
+      "node-id": 42,
+      "props": {
+        "port.name": "hdmi-output-0",
+        "port.direction": "in",
+        "node.id": 42
+      }
+    }
+  },
+  {
+    "id": 91,
+    "type": "PipeWire:Interface:Port",
+    "version": 3,
+    "permissions": ["r", "m"],
+    "info": {
+      "direction": "output",
+      "node-id": 43,
+      "props": {
+        "port.name": "hdmi-output-3",
+        "port.direction": "in",
+        "node.id": 43
+      }
+    }
+  },
+  {
+    "id": 100,
+    "type": "PipeWire:Interface:Node",
+    "version": 3,
+    "permissions": ["r", "w", "x", "m"],
+    "info": {
+      "props": {
+        "node.name": "alsa_input.usb-ddHiFi.pro-input-0",
+        "node.description": "ddHiFi USB DAC Input",
+        "media.class": "Audio/Source",
+        "audio.position": "FL,FR"
+      }
+    }
+  }
+]

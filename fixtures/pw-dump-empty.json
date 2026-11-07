@@ -1,0 +1,13 @@
+[
+  {
+    "id": 7,
+    "type": "PipeWire:Interface:Core",
+    "version": 3,
+    "permissions": ["r", "w", "x", "m"],
+    "info": {
+      "props": {
+        "core.name": "pipewire-0"
+      }
+    }
+  }
+]
