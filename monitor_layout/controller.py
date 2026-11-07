@@ -120,6 +120,14 @@ class LayoutController:
         mon.validate()
         self.notify()
 
+    def set_input_layout(self, input_layout: str) -> None:
+        """Choose the fixed input format for the exported virtual sink."""
+        if input_layout not in INPUT_LAYOUTS:
+            raise LayoutError(f"bad input layout {input_layout!r}")
+        if input_layout != self.layout.input_layout:
+            self.layout.input_layout = input_layout
+            self.notify()
+
     def set_orientation(self, monitor_id: str, orientation: str) -> None:
         mon = self._require(monitor_id)
         if orientation not in ORIENTATIONS:

@@ -379,7 +379,7 @@ class Scene:
         _rounded_rect(cr, bx, by, bw, bh, bh / 2)
         _set_source(cr, pal.accent)
         cr.fill()
-        _text(cr, label, bx + bw / 2, by + bh / 2, size, pal.accent_fg, bold=True)
+        _text(cr, label, bx + bw / 2, by + bh / 2, size, (0.08, 0.08, 0.12, 1), bold=True)
 
     def _draw_listener(self, cr: cairo.Context) -> None:
         main = self.layout.main()

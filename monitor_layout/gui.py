@@ -19,7 +19,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
 
 from . import apply as apply_mod
 from .controller import LayoutController
@@ -33,26 +33,34 @@ ORIENTATION_LABELS = ("Landscape", "Portrait")
 EDGE_LABELS = ("Bottom", "Top", "Left", "Right")
 
 CSS = b"""
-.layout-canvas {
-    background-color: @window_bg_color;
-}
-
-.sidebar {
-    background-color: @sidebar_bg_color;
-}
-
-.channel-label {
-    font-family: monospace;
-    font-weight: bold;
-}
-
-.gain-text {
-    font-family: monospace;
-    font-size: 0.9em;
-}
+@define-color window_bg_color #121214;
+@define-color window_fg_color #f4f4f5;
+@define-color card_bg_color #222225;
+@define-color card_border_color #52525b;
+@define-color accent_color #a5b4fc;
+@define-color accent_bg_color #6366f1;
+@define-color accent_fg_color #ffffff;
+@define-color dim_label_color #a1a1aa;
+window { background: #121214; color: #f4f4f5; }
+headerbar { background: #18181b; border-bottom: 1px solid #303036; }
+.sidebar { background: #18181b; border-left: 1px solid #303036; }
+.workspace-toolbar { padding: 16px; }
+.workspace-footer { padding: 12px 16px; border-top: 1px solid #27272a; color: #a1a1aa; }
+.workspace-title { font-size: 18px; font-weight: 700; }
+.segmented { background: #27272a; padding: 4px; border-radius: 10px; }
+.segmented button { border-radius: 7px; padding: 6px 12px; background: transparent; box-shadow: none; }
+.segmented button:checked { background: #484851; color: white; }
+.inspector-tabs { margin: 12px; }
+.inspector-tabs button { min-width: 0; padding: 6px 10px; }
+.room-status { font-size: 12px; }
+preferencespage > scrolledwindow > viewport > clamp > box { margin: 12px; }
+row.device-row { background: #222225; }
+row.device-row.active-target { background: #32323d; }
+row.device-row:focus-visible { outline: 2px solid #a5b4fc; outline-offset: -2px; }
+button, spinbutton, dropdown { border-radius: 8px; }
+.channel-label { font-family: monospace; font-weight: bold; }
+.gain-text { font-family: monospace; font-size: 0.9em; }
 """
-
-
 
 
 def _group_children(widget):
@@ -72,16 +80,19 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
         super().__init__(application=app)
         self.controller = controller
         self.set_title("Monitor Layout")
-        self.set_default_size(1080, 720)
+        self.set_default_size(1200, 800)
+        app.get_style_manager().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
         self.set_size_request(720, 520)
 
-        provider = Gtk.CssProvider()
-        provider.load_from_data(CSS)
-        Gtk.StyleContext.add_provider_for_display(
-            Gdk.Display.get_default(),
-            provider,
-            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
-        )
+        # Install once per display rather than stacking global providers.
+        display = Gdk.Display.get_default()
+        if not getattr(display, "_monitor_layout_styled", False):
+            provider = Gtk.CssProvider()
+            provider.load_from_data(CSS)
+            Gtk.StyleContext.add_provider_for_display(
+                display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+            )
+            display._monitor_layout_styled = True
 
         self.toasts = Adw.ToastOverlay()
         self.set_content(self.toasts)
@@ -134,7 +145,8 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
         add_btn.connect("clicked", lambda _b: self.on_add_monitor())
         header.pack_start(add_btn)
 
-        save_btn = Gtk.Button.new_from_icon_name("document-save-symbolic")
+        save_btn = Gtk.Button(label="Save")
+        save_btn.add_css_class("suggested-action")
         save_btn.set_tooltip_text("Save layout")
         save_btn.connect("clicked", lambda _b: self.on_save_clicked())
         header.pack_end(save_btn)
@@ -144,7 +156,7 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
         load_btn.connect("clicked", lambda _b: self.on_load_clicked())
         header.pack_end(load_btn)
 
-        export_btn = Gtk.Button.new_from_icon_name("document-export-symbolic")
+        export_btn = Gtk.Button(label="Export…")
         export_btn.set_tooltip_text("Export PipeWire configuration")
         export_btn.connect("clicked", lambda _b: self.on_export_clicked())
         header.pack_end(export_btn)
@@ -163,41 +175,69 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
 
     def _build_body(self) -> Gtk.Widget:
         paned = Gtk.Paned.new(Gtk.Orientation.HORIZONTAL)
-        paned.set_position(380)
+        paned.set_position(820)
+        paned.set_resize_end_child(False)
+        paned.set_shrink_end_child(False)
         paned.set_vexpand(True)
-
-        self.sidebar = Gtk.ScrolledWindow()
-        self.sidebar.add_css_class("sidebar")
-        self.sidebar.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        self.sidebar.set_size_request(320, -1)
-        self.sidebar_page = Adw.PreferencesPage()
-        self.sidebar.set_child(self.sidebar_page)
-        paned.set_start_child(self.sidebar)
-
         self.canvas_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.hint = Gtk.Label(label="Drag a display to move it. Arrows nudge, R rotates, M sets main.")
-        self.hint.add_css_class("dim-label")
-        self.hint.set_margin_top(6)
-        self.hint.set_margin_bottom(8)
-        self.canvas_box.append(self.hint)
-        self.view_drop = Gtk.DropDown.new_from_strings(["Displays · front view", "Listening area · top down"])
+        top = Gtk.Box(spacing=12)
+        top.add_css_class("workspace-toolbar")
+        title = Gtk.Label(label="Your workspace", xalign=0, hexpand=True)
+        title.add_css_class("workspace-title")
+        title.set_ellipsize(Pango.EllipsizeMode.END)
+        title.set_width_chars(1)
+        top.append(title)
+        self.view_drop = Gtk.DropDown.new_from_strings(["Displays", "Listening area"])
         self.view_drop.connect("notify::selected", self._on_view_changed)
-        self.canvas_box.append(self.view_drop)
-        paned.set_end_child(self.canvas_box)
-
+        segments = Gtk.Box()
+        segments.add_css_class("segmented")
+        self.view_buttons = []
+        for index, label in enumerate(("Displays", "Room")):
+            button = Gtk.ToggleButton(label=label)
+            if self.view_buttons:
+                button.set_group(self.view_buttons[0])
+            button.connect("clicked", lambda b, i=index: self.view_drop.set_selected(i) if b.get_active() else None)
+            self.view_buttons.append(button)
+            segments.append(button)
+        self.view_buttons[0].set_active(True)
+        top.append(segments)
+        self.canvas_box.append(top)
+        paned.set_start_child(self.canvas_box)
+        inspector = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        inspector.add_css_class("sidebar")
+        inspector.set_size_request(340, -1)
+        self.inspector_stack = Gtk.Stack(vexpand=True)
+        self.inspector_stack.set_hhomogeneous(False)
+        switcher = Gtk.StackSwitcher(stack=self.inspector_stack)
+        switcher.add_css_class("inspector-tabs")
+        inspector.append(switcher)
+        inspector.append(self.inspector_stack)
+        self.sidebar_page = Adw.PreferencesPage()
+        self.outputs_page = Adw.PreferencesPage()
+        self.preview_page = Adw.PreferencesPage()
+        self.inspector_stack.add_titled(self.sidebar_page, "layout", "Layout")
+        self.inspector_stack.add_titled(self.outputs_page, "outputs", "Audio")
+        self.inspector_stack.add_titled(self.preview_page, "preview", "Preview")
+        self.sidebar = inspector
+        paned.set_end_child(inspector)
+        self.hint = Gtk.Label(label="Drag to arrange · R rotate · M main · Arrow keys nudge", wrap=True, xalign=0)
+        self.hint.add_css_class("workspace-footer")
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        root.append(paned)
+        root.append(self.hint)
         self._build_groups()
-        return paned
+        return root
 
     def _build_groups(self) -> None:
         page = self.sidebar_page
 
         self.group_displays = Adw.PreferencesGroup(
-            title="Displays", description="Detected displays in your desktop arrangement"
+            title="Devices", description="Select a display to edit its placement"
         )
         page.add(self.group_displays)
 
         self.group_selected = Adw.PreferencesGroup(
-            title="Selected display", description="Refine the highlighted display"
+            title="Display properties"
         )
         page.add(self.group_selected)
 
@@ -205,21 +245,29 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
             title="Audio outputs",
             description="Map each display to a PipeWire output and confirm its speakers",
         )
-        page.add(self.group_outputs)
+        self.outputs_page.add(self.group_outputs)
 
         self.group_preview = Adw.PreferencesGroup(
             title="Route preview",
             description="How much of each input channel reaches each speaker",
         )
-        page.add(self.group_preview)
+        format_group = Adw.PreferencesGroup(title="Source format", description="Fixed format of the exported sink. Not live-source detection.")
+        format_row = Adw.ActionRow(title="Input channels")
+        self.input_format = Gtk.DropDown.new_from_strings(["Stereo", "5.1"])
+        self.input_format.set_valign(Gtk.Align.CENTER)
+        self.input_format.connect("notify::selected", self._on_input_format_changed)
+        format_row.add_suffix(self.input_format)
+        format_group.add(format_row)
+        self.preview_page.add(format_group)
+        self.preview_page.add(self.group_preview)
 
         note = Adw.PreferencesGroup()
         note.set_title("Notes")
         note.add(
             Adw.ActionRow(
-                title="Stereo widening, not discrete surround",
+                title="Stereo input uses stereo widening",
                 subtitle=(
-                    "Extra speakers get a blend of the stereo channels. Desktop "
+                    "Stereo input blends left and right across extra speakers, not discrete surround. Desktop "
                     "positions are approximate until you place them in the listening area."
                 ),
             )
@@ -233,16 +281,22 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
                 ),
             )
         )
-        page.add(note)
+        self.preview_page.add(note)
 
-        self.group_room = Adw.PreferencesGroup(title="Listening area", description="Centimeters, +X right, +Y down. Facing 0° looks up. Initial positions are approximate, not measured.")
+        self.group_room = Adw.PreferencesGroup(title="Room placement", description="Centimeters · +X right · +Y down · 0° faces up")
         page.add(self.group_room)
-        reference = Gtk.Button(label="Use seated position / no main required")
+        reference = Gtk.Button(label="Use seat")
+        reference.set_valign(Gtk.Align.CENTER)
         reference.connect("clicked", lambda *_: self.controller.clear_main())
-        self.group_room.add(reference)
+        reference_row = Adw.ActionRow(title="Sound reference", subtitle="Seat position or main display")
+        reference_row.add_suffix(reference)
+        self.reference_row = reference_row
+        self.reference_button = reference
+        self.group_room.add(reference_row)
         seat = Gtk.Button(label="Select seat")
+        seat.set_valign(Gtk.Align.CENTER)
         seat.connect("clicked", lambda *_: self._select_room("__listener__"))
-        self.group_room.add(seat)
+        self.group_room.set_header_suffix(seat)
         room_grid = Gtk.Grid(column_spacing=8, row_spacing=6)
         self.room_x = self._precision_spin("Room X", room_grid, 0)
         self.room_y = self._precision_spin("Room Y", room_grid, 1)
@@ -250,17 +304,21 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
         self.room_width = self._precision_spin("Speaker span", room_grid, 3)
         for spin in (self.room_x, self.room_y, self.room_yaw, self.room_width):
             spin.connect("value-changed", self._on_room_changed)
+        for setter in (room_grid.set_margin_top, room_grid.set_margin_bottom, room_grid.set_margin_start, room_grid.set_margin_end):
+            setter(12)
         self.group_room.add(room_grid)
         self.room_status = Gtk.Label(wrap=True, xalign=0)
+        self.room_status.add_css_class("dim-label")
+        self.room_status.add_css_class("room-status")
+        self.room_status.set_margin_top(12)
+        self.room_status.set_margin_bottom(12)
         self.group_room.add(self.room_status)
-        confirm_room = Gtk.Button(label="Confirm this room position")
+        confirm_room = Gtk.Button(label="Confirm position")
         confirm_room.connect("clicked", lambda *_: self._on_room_changed(None))
+        confirm_room.set_halign(Gtk.Align.END)
         self.group_room.add(confirm_room)
-        # PreferencesPage exposes add/remove, not a public reorder operation.
-        # Re-add the secondary groups after the contextual listening inspector.
-        for group in (self.group_selected, self.group_outputs, self.group_preview, note):
-            page.remove(group)
-            page.add(group)
+        page.remove(self.group_selected)
+        page.add(self.group_selected)
         self.group_room.set_visible(False)
         self._build_selected_rows()
         self._display_rows = []
@@ -269,6 +327,7 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
 
     def _build_selected_rows(self) -> None:
         group = self.group_selected
+        self.display_only_rows = []
 
         self.entry_name = Adw.EntryRow(title="Name")
         self.entry_name.connect("changed", self._on_name_changed)
@@ -277,40 +336,54 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
         self.drop_orientation = Gtk.DropDown.new_from_strings(list(ORIENTATION_LABELS))
         self.drop_orientation.set_valign(Gtk.Align.CENTER)
         self.drop_orientation.connect("notify::selected", self._on_orientation_changed)
-        row = Adw.ActionRow(title="Orientation", subtitle="Rotate the display")
+        row = Adw.ActionRow(title="Orientation")
         row.add_suffix(self.drop_orientation)
+        self.display_only_rows.append(row)
         group.add(row)
 
-        self.btn_rotate = Gtk.Button(label="Rotate")
-        self.btn_rotate.set_valign(Gtk.Align.CENTER)
-        self.btn_rotate.add_css_class("flat")
-        self.btn_rotate.connect("clicked", lambda _b: self.on_rotate())
-        row = Adw.ActionRow(title="Quick rotate")
-        row.add_suffix(self.btn_rotate)
-        group.add(row)
+        actions = Gtk.Box(spacing=6)
+        self.btn_rotate = Gtk.Button(label="Rotate", hexpand=True)
+        self.btn_rotate.connect("clicked", lambda *_: self.on_rotate())
+        actions.append(self.btn_rotate)
+        for icon, tooltip, action in (
+            ("go-up-symbolic", "Move selected display earlier", lambda: self.on_reorder(self.canvas.selected_id, -1)),
+            ("go-down-symbolic", "Move selected display later", lambda: self.on_reorder(self.canvas.selected_id, 1)),
+            ("user-trash-symbolic", "Remove selected display", lambda: self.on_remove(self.canvas.selected_id)),
+        ):
+            button = Gtk.Button.new_from_icon_name(icon)
+            button.set_tooltip_text(tooltip)
+            if icon == "user-trash-symbolic":
+                button.set_margin_start(16)
+            button.update_property([Gtk.AccessibleProperty.LABEL], [tooltip])
+            button.connect("clicked", lambda _, fn=action: fn())
+            actions.append(button)
+        self.display_actions = actions
+        group.add(actions)
 
         self.spin_speakers = Gtk.SpinButton.new(
             Gtk.Adjustment(value=2, lower=1, upper=4, step_increment=1, page_increment=1), 1, 0
         )
         self.spin_speakers.set_valign(Gtk.Align.CENTER)
         self.spin_speakers.connect("value-changed", self._on_speaker_count_changed)
-        row = Adw.ActionRow(title="Speakers", subtitle="Confirmed physical drivers per display")
+        row = Adw.ActionRow(title="Speakers")
         row.add_suffix(self.spin_speakers)
         group.add(row)
 
         self.drop_edge = Gtk.DropDown.new_from_strings(list(EDGE_LABELS))
         self.drop_edge.set_valign(Gtk.Align.CENTER)
         self.drop_edge.connect("notify::selected", self._on_edge_changed)
-        row = Adw.ActionRow(title="Speaker edge (viewer-relative)", subtitle="Orientation does not auto-calibrate speakers")
+        row = Adw.ActionRow(title="Speaker edge")
         row.add_suffix(self.drop_edge)
+        self.display_only_rows.append(row)
         group.add(row)
 
         self.btn_main = Gtk.Button(label="Set as main")
         self.btn_main.set_valign(Gtk.Align.CENTER)
-        self.btn_main.add_css_class("suggested-action")
+        self.btn_main.add_css_class("flat")
         self.btn_main.connect("clicked", lambda _b: self.on_set_main())
-        row = Adw.ActionRow(title="Main display", subtitle="The one you mainly look at")
+        row = Adw.ActionRow(title="Main display")
         row.add_suffix(self.btn_main)
+        self.display_only_rows.append(row)
         group.add(row)
 
         # precision tools (optional refinement of the direct manipulation)
@@ -328,12 +401,13 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
             (self.spin_h, ("Height", 3, 1)),
         ):
             spin.connect("value-changed", self._on_precision_changed)
-        row = Adw.ActionRow(title="Exact position and size")
-        row.add_suffix(grid)
+        row = Adw.ExpanderRow(title="Exact position and size", subtitle="Front elevation coordinates")
+        row.add_row(grid)
+        self.display_only_rows.append(row)
         group.add(row)
 
     def _precision_spin(self, label: str, grid: Gtk.Grid, row: int) -> Gtk.SpinButton:
-        lbl = Gtk.Label(label=label)
+        lbl = Gtk.Label(label=label, xalign=0, hexpand=True)
         lbl.set_valign(Gtk.Align.CENTER)
         grid.attach(lbl, 0, row, 1, 1)
         spin = Gtk.SpinButton.new(
@@ -349,6 +423,11 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
 
 
     def _track(self, group, row, bucket):
+        if isinstance(row, Adw.ActionRow):
+            row.set_title_lines(1)
+            row.set_subtitle_lines(0)
+            row.set_use_markup(False)
+            row.set_tooltip_text(row.get_title())
         group.add(row)
         bucket.append(row)
 
@@ -433,52 +512,24 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
             )
             row.set_activatable(True)
             row.connect("activated", lambda _r, mid=mon.id: self.canvas.select(mid))
-            if mon.is_main:
-                row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
-            else:
-                btn = Gtk.Button.new_from_icon_name("star-new-symbolic")
-                btn.add_css_class("flat")
-                btn.set_tooltip_text("Set as main display")
-                btn.set_valign(Gtk.Align.CENTER)
-                btn.connect("clicked", lambda _b, mid=mon.id: self.on_set_main(mid))
-                row.add_suffix(btn)
-            rot = Gtk.Button.new_from_icon_name("object-rotate-left-symbolic")
-            rot.add_css_class("flat")
-            rot.set_tooltip_text("Rotate")
-            rot.set_valign(Gtk.Align.CENTER)
-            rot.connect("clicked", lambda _b, mid=mon.id: self.on_rotate(mid))
-            row.add_suffix(rot)
-            up = Gtk.Button.new_from_icon_name("go-up-symbolic")
-            up.add_css_class("flat")
-            up.set_tooltip_text("Move up in the list")
-            up.set_valign(Gtk.Align.CENTER)
-            up.set_sensitive(index > 0)
-            up.connect("clicked", lambda _b, mid=mon.id: self.on_reorder(mid, -1))
-            row.add_suffix(up)
-            down = Gtk.Button.new_from_icon_name("go-down-symbolic")
-            down.add_css_class("flat")
-            down.set_tooltip_text("Move down in the list")
-            down.set_valign(Gtk.Align.CENTER)
-            down.set_sensitive(index < len(monitors) - 1)
-            down.connect("clicked", lambda _b, mid=mon.id: self.on_reorder(mid, +1))
-            row.add_suffix(down)
-            rm = Gtk.Button.new_from_icon_name("user-trash-symbolic")
-            rm.add_css_class("flat")
-            rm.set_tooltip_text("Remove display")
-            rm.set_valign(Gtk.Align.CENTER)
-            rm.connect("clicked", lambda _b, mid=mon.id: self.on_remove(mid))
-            row.add_suffix(rm)
+            row.set_title_lines(1)
+            row.set_subtitle_lines(1)
+            row.add_css_class("device-row")
+            row.set_selectable(False)
+            row._target_id = mon.id
             self._track(group, row, self._display_rows)
 
     def _select_room(self, target_id):
         self.view_drop.set_selected(1)
         self.canvas.set_view_mode("room")
         self.canvas.select(target_id)
+        self.canvas.grab_focus()
 
     def _on_view_changed(self, dropdown, *_):
         if not hasattr(self, "canvas"):
             return
         room = dropdown.get_selected() == 1
+        self.view_buttons[int(room)].set_active(True)
         self.group_room.set_visible(room)
         self.canvas.set_view_mode("room" if room else "front")
         self.hint.set_text("Drag speakers or your seat. R turns by 15°. Arrows nudge." if room else "Front elevation: drag displays, R rotates. Height is not room depth.")
@@ -488,6 +539,13 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
         layout = self.controller.layout
         target = layout.get(self.canvas.selected_id)
         seat = self.canvas.selected_id == "__listener__"
+        self.reference_row.set_subtitle("Seat position active · no main needed" if layout.reference_mode == "listener" else "Main display active")
+        has_main = layout.main() is not None
+        self.reference_button.set_sensitive(layout.reference_mode != "listener" or has_main)
+        self.reference_button.set_label("Use seat" if layout.reference_mode != "listener" else ("Clear main" if has_main else "Active"))
+        self.group_room.set_title("Your listening position" if seat else (f"{target.name} · room" if target else "Room placement"))
+        self.room_width.set_visible(isinstance(target, Peripheral))
+        self.room_width.get_parent().get_child_at(0, 3).set_visible(isinstance(target, Peripheral))
         self._updating = True
         try:
             for widget in (self.room_x, self.room_y, self.room_yaw):
@@ -525,6 +583,18 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
     def _refresh_selected(self) -> None:
         mon_id = self.canvas.selected_id
         mon = self.controller.layout.get(mon_id) if mon_id else None
+        self.group_selected.set_visible(mon is not None)
+        self.group_selected.set_title(mon.name if mon else "Select a display")
+        display_controls = mon is not None and not isinstance(mon, Peripheral) and self.view_drop.get_selected() == 0
+        self.display_actions.set_visible(display_controls)
+        self.display_actions.set_sensitive(display_controls)
+        for row in self.display_only_rows:
+            row.set_visible(display_controls)
+        for row in self._display_rows:
+            if mon_id is not None and getattr(row, "_target_id", None) == mon_id:
+                row.add_css_class("active-target")
+            else:
+                row.remove_css_class("active-target")
         self._updating = True
         try:
             if mon is None:
@@ -586,7 +656,7 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
 
     def _rebuild_outputs(self) -> None:
         group = self.group_outputs
-        for row in self._output_rows:
+        for row in getattr(self, "_output_top_rows", self._output_rows):
             group.remove(row)
         self._output_rows = []
 
@@ -614,7 +684,7 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
         for sink in self.controller.sinks:
             if sink.is_virtual or sink.kind == "headphones":
                 continue
-            add = Gtk.Button(label="Add speaker" if sink.auto_speaker_candidate else "Confirm speaker…")
+            add = Gtk.Button(label="Add" if sink.auto_speaker_candidate else "Confirm…")
             add.set_valign(Gtk.Align.CENTER)
             add.set_sensitive(sink.name not in self.controller.layout.mapped_device_names())
             add.connect("clicked", lambda _b, output=sink: self.on_add_speaker(output))
@@ -630,6 +700,7 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
             row.add_suffix(remove)
             self._track(group, row, self._output_rows)
 
+        self._output_top_rows = list(self._output_rows)
         for mon in self.controller.layout.targets():
             mapping = self.controller.mapping_for(mon.id)
             current = mapping.device if mapping else None
@@ -638,20 +709,46 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
             selected = labels.index(current) if current in labels else 0
             drop = Gtk.DropDown.new_from_strings(labels)
             drop.set_valign(Gtk.Align.CENTER)
+            factory = Gtk.SignalListItemFactory()
+            factory.connect("setup", lambda _, item: item.set_child(Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=16)))
+            factory.connect("bind", lambda _, item: item.get_child().set_text(item.get_item().get_string()))
+            drop.set_factory(factory)
+            popup_factory = Gtk.SignalListItemFactory()
+            popup_factory.connect("setup", lambda _, item: item.set_child(
+                Gtk.Label(xalign=0, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR,
+                          max_width_chars=38, ellipsize=Pango.EllipsizeMode.NONE)))
+            popup_factory.connect("bind", lambda _, item, choices=candidates:
+                item.get_child().set_text(self._output_choice_text(item.get_item().get_string(), choices)))
+            drop.set_list_factory(popup_factory)
+            drop.set_tooltip_text(self._output_choice_text(labels[selected], candidates))
+            drop.connect("notify::selected", lambda d, _p, choices=candidates:
+                d.set_tooltip_text(self._output_choice_text(d.get_selected_item().get_string(), choices))
+                if d.get_selected_item() else None)
+            drop.set_size_request(120, -1)
             drop.set_selected(selected)
             drop.connect(
                 "notify::selected",
                 lambda d, _p, mid=mon.id, choices=candidates: self._on_device_changed(mid, d, choices),
             )
-            row = Adw.ActionRow(title=mon.name, subtitle=current or "no output mapped")
-            row.add_suffix(drop)
+            row = Adw.ExpanderRow(title=mon.name, subtitle=current or "No output mapped")
+            row.set_subtitle_lines(1)
+            drop.set_hexpand(True)
+            mapping_controls = Gtk.Box(spacing=8)
+            mapping_controls.set_margin_top(8)
+            mapping_controls.set_margin_bottom(8)
+            mapping_controls.set_margin_start(8)
+            mapping_controls.set_margin_end(8)
+            mapping_controls.append(drop)
+            row.add_row(mapping_controls)
             if current:
                 unmap = Gtk.Button(label="Unmap")
                 unmap.set_valign(Gtk.Align.CENTER)
                 unmap.set_tooltip_text("Clear this output mapping; keep its placement")
                 unmap.connect("clicked", lambda _b, mid=mon.id: self.controller.unmap_device(mid))
-                row.add_suffix(unmap)
+                mapping_controls.append(unmap)
             self._track(group, row, self._output_rows)
+            self._output_top_rows.append(row)
+            mapping_group = row
 
             if current:
                 sink = next((s for s in self.controller.sinks if s.name == current), None)
@@ -660,7 +757,7 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
                     verify.connect("clicked", lambda _b, output=sink, mid=mon.id: self._confirm_unknown(output, lambda: self.controller.confirm_output_speaker(mid)))
                     verify_row = Adw.ActionRow(title="Unknown output type", subtitle="Confirm this is a speaker, not headphones")
                     verify_row.add_suffix(verify)
-                    self._track(group, verify_row, self._output_rows)
+                    self._track_mapping(mapping_group, verify_row)
                 channels = ", ".join(sink.channels) if sink and sink.channels else "unknown"
                 info = Adw.ActionRow(
                     title="Reported channels",
@@ -668,7 +765,7 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
                         f"{channels} ({sink.description})" if sink else "device not detected"
                     ),
                 )
-                self._track(group, info, self._output_rows)
+                self._track_mapping(mapping_group, info)
                 confirm = Gtk.Button(
                     label=(
                         "Confirm"
@@ -684,7 +781,7 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
                     lambda _b, mid=mon.id, m=mon: self.on_confirm_speakers(mid, m.speaker_count),
                 )
                 row = Adw.ActionRow(
-                    title="Physical speakers",
+                    title="Speakers",
                     subtitle=(
                         f"{mon.speaker_count} speaker(s) on this display"
                         + (
@@ -695,18 +792,29 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
                     ),
                 )
                 row.add_suffix(confirm)
-                self._track(group, row, self._output_rows)
+                self._track_mapping(mapping_group, row)
 
-                order_button = Gtk.Button(label="Set channel order")
+                order_button = Gtk.Button(label="Set order…")
                 order_button.set_valign(Gtk.Align.CENTER)
                 order_button.connect("clicked", lambda _b, mid=mon.id: self.on_channel_order(mid))
                 order_row = Adw.ActionRow(
-                    title="Physical channel order",
+                    title="Channel order",
                     subtitle=(", ".join(mapping.channel_order) if mapping.channel_order else "Not confirmed")
                     + " · left to right / top to bottom",
                 )
                 order_row.add_suffix(order_button)
-                self._track(group, order_row, self._output_rows)
+                self._track_mapping(mapping_group, order_row)
+
+    @staticmethod
+    def _output_choice_text(name, candidates):
+        sink = next((sink for sink in candidates if sink.name == name), None)
+        return f"{sink.description}\n{sink.name}" if sink else name
+
+    def _track_mapping(self, group, row):
+        row.set_title_lines(1)
+        row.set_subtitle_lines(2)
+        group.add_row(row)
+        self._output_rows.append(row)
 
     def _confirm_unknown(self, sink, action):
         dialog = Adw.MessageDialog.new(self, "Is this output a physical speaker?",
@@ -796,7 +904,15 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
 
     # -- preview -------------------------------------------------------------
 
+    def _on_input_format_changed(self, dropdown, *_):
+        if getattr(self, "_updating_format", False):
+            return
+        self.controller.set_input_layout(tuple(INPUT_CHANNELS)[dropdown.get_selected()])
+
     def _rebuild_preview(self) -> None:
+        self._updating_format = True
+        self.input_format.set_selected(tuple(INPUT_CHANNELS).index(self.controller.layout.input_layout))
+        self._updating_format = False
         group = self.group_preview
         for row in self._preview_rows:
             group.remove(row)
@@ -811,34 +927,21 @@ class MonitorLayoutWindow(Adw.ApplicationWindow):
             return
         result = outcome.contributions
         assert result is not None
-        for channel in result.channels:
-            parts = []
-            for key in result.speaker_keys:
-                gain = result.matrix[channel].get(key, 0.0)
-                if gain > 0:
-                    parts.append(f"{key} {round(gain * 100)}%")
-            label = Gtk.Label(label=channel)
-            label.add_css_class("channel-label")
-            label.set_valign(Gtk.Align.CENTER)
-            text = Gtk.Label(label=" · ".join(parts) if parts else "silent")
-            text.add_css_class("gain-text")
-            text.set_valign(Gtk.Align.CENTER)
-            text.set_wrap(True)
-            text.set_xalign(0)
-            row = Adw.ActionRow()
-            row.set_title("")  # keep the row compact
-            row.add_prefix(label)
-            row.add_suffix(text)
-            self._track(group, row, self._preview_rows)
+        names = {target.id: target.name for target in self.controller.layout.targets()}
         for key in result.speaker_keys:
-            total = result.speaker_total(key)
-            row = Adw.ActionRow(
-                title=key,
-                subtitle=f"total {round(total * 100)}% of one full-scale signal",
-            )
+            target_id, _, speaker = key.rpartition("/")
+            name = names.get(target_id, target_id)
+            side = {"L": "Left", "R": "Right"}.get(speaker, speaker)
+            gains = " · ".join(f"{channel} {round(result.matrix[channel].get(key, 0) * 100)}%"
+                               for channel in result.channels)
+            row = Adw.ActionRow(title=f"{name} · {side}", subtitle=gains)
             self._track(group, row, self._preview_rows)
         for warning in outcome.warnings:
-            self._track(group, Adw.ActionRow(title="Note", subtitle=warning), self._preview_rows)
+            for target_id, name in names.items():
+                warning = warning.replace(target_id, name)
+            row = Adw.ActionRow(title="Note", subtitle=warning)
+            self._track(group, row, self._preview_rows)
+            row.set_subtitle_lines(0)
 
     # --------------------------------------------------------------- actions
 

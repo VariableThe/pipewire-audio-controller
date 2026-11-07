@@ -69,3 +69,24 @@ def test_demo_repeated_discovery_never_runs_live_commands():
         assert c.discover(denied).source == "fixture"
         assert c.discover_sinks(denied) is None
     assert [t.id for t in c.layout.targets()] == ids
+
+
+def test_input_format_validation_and_persistence(tmp_path):
+    import pytest
+    from monitor_layout.controller import LayoutController
+    from monitor_layout.model import LayoutError
+    from monitor_layout.profiles import save_profile, load_profile
+    ctl = LayoutController()
+    notifications = []
+    ctl.connect(lambda changed=True: notifications.append(changed))
+    ctl.set_input_layout("5.1")
+    assert ctl.layout.input_layout == "5.1"
+    assert notifications == [True]
+    ctl.set_input_layout("5.1")
+    assert notifications == [True]
+    with pytest.raises(LayoutError):
+        ctl.set_input_layout("atmos")
+    assert ctl.layout.input_layout == "5.1"
+    path = tmp_path / "format.json"
+    save_profile(ctl.layout, path)
+    assert load_profile(path).input_layout == "5.1"

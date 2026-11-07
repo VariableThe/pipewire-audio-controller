@@ -219,15 +219,16 @@ def test_room_inspector_contextual_and_before_secondary_groups(room_window):
     groups = [widget for widget in descendants(window.sidebar_page)
               if widget in (window.group_displays, window.group_room, window.group_selected,
                             window.group_outputs, window.group_preview)]
-    assert groups == [window.group_displays, window.group_room, window.group_selected,
-                      window.group_outputs, window.group_preview]
+    assert groups == [window.group_displays, window.group_room, window.group_selected]
+    assert window.group_outputs in list(descendants(window.outputs_page))
+    assert window.group_preview in list(descendants(window.preview_page))
     buttons = {widget.get_label(): widget for widget in descendants(window.group_room)
                if isinstance(widget, Gtk.Button)}
     buttons["Select seat"].emit("clicked")
     assert window.canvas.selected_id == "__listener__"
     ctl = window.controller
     ctl.set_main(ctl.layout.monitors[0].id)
-    buttons["Use seated position / no main required"].emit("clicked")
+    window.reference_button.emit("clicked")
     assert ctl.layout.main() is None
     assert ctl.layout.reference_mode == "listener"
     window.view_drop.set_selected(0)
@@ -325,10 +326,129 @@ def test_same_name_rediscovery_rebuilds_metadata_and_candidates(room_window):
     ctl.notify(False)
     row = next(row for row in window._output_rows if row.get_title() == unknown.description)
     button = next(widget for widget in _descendants(row)
-                  if isinstance(widget, Gtk.Button) and widget.get_label() == "Confirm speaker…")
+                  if isinstance(widget, Gtk.Button) and widget.get_label() == "Confirm…")
     button.emit("clicked")
     dialog = next(w for w in Gtk.Window.list_toplevels()
                   if isinstance(w, Adw.MessageDialog) and w.get_heading() == "Is this output a physical speaker?")
     assert unknown.description in dialog.get_body()
     dialog.emit("response", "cancel")
     assert ctl.layout.peripherals == []
+
+
+def test_workspace_navigation_is_nonmutating(room_window):
+    from gi.repository import Adw
+    window = room_window
+    assert window.get_application().get_style_manager().get_color_scheme() == Adw.ColorScheme.FORCE_DARK
+    selected = window.canvas.selected_id
+    window._dirty = False
+    for page in ("outputs", "preview", "layout"):
+        window.inspector_stack.set_visible_child_name(page)
+        assert window.canvas.selected_id == selected
+        assert not window._dirty
+    window.view_buttons[1].emit("clicked")
+    # A GTK click normally toggles active before emission; set_active also
+    # covers keyboard/programmatic changes through the shared selection model.
+    window.view_drop.set_selected(1)
+    assert window.view_buttons[1].get_active()
+    assert window.canvas.view_mode == "room"
+    window.view_drop.set_selected(0)
+    assert window.view_buttons[0].get_active()
+    assert not window._dirty
+
+
+def test_context_selection_clears_monitor_highlight(room_window):
+    from monitor_layout.model import Peripheral
+    window = room_window
+    window._select_room("__listener__")
+    assert not window.group_selected.get_visible()
+    assert not window.room_width.get_visible()
+    assert all(not row.has_css_class("active-target") for row in window._display_rows)
+    assert all(not row.get_selectable() for row in window._display_rows)
+    target = Peripheral("context-test", "Desk speaker", speaker_confirmed=True)
+    window.controller.layout.peripherals.append(target)
+    window._select_room(target.id)
+    assert window.group_selected.get_visible()
+    assert window.room_width.get_visible()
+    assert all(not row.get_visible() for row in window.display_only_rows)
+    assert not window.display_actions.get_visible()
+    window.canvas.select(window.controller.layout.monitors[0].id)
+    window.view_drop.set_selected(0)
+    assert all(row.get_visible() for row in window.display_only_rows)
+    assert window.display_actions.get_visible()
+
+
+def test_empty_workspace_has_no_selected_placeholder(room_window):
+    window = room_window
+    window.action_reset()
+    assert not window.group_selected.get_visible()
+    assert all(not row.has_css_class("active-target") for row in window._display_rows)
+
+
+def test_preview_uses_friendly_names_and_full_warnings(room_window):
+    window = room_window
+    window.inspector_stack.set_visible_child_name("preview")
+    window.refresh()
+    assert window._preview_rows
+    for row in window._preview_rows:
+        assert "monitor-1/" not in row.get_title()
+        assert "monitor-2/" not in row.get_title()
+        assert row.get_subtitle_lines() == 0
+
+
+def test_input_format_updates_preview_and_dirty_state(room_window):
+    window = room_window
+    window._dirty = False
+    window.input_format.set_selected(1)
+    assert window.controller.layout.input_layout == "5.1"
+    assert window._dirty
+    assert window.controller.preview().contributions.channels == ["FL", "FR", "FC", "LFE", "RL", "RR"]
+    window.controller.set_input_layout("stereo")
+    assert window.input_format.get_selected() == 0
+
+
+def test_clear_main_remains_available_in_listener_mode(room_window):
+    window = room_window
+    ctl = window.controller
+    ctl.clear_main()
+    monitor = ctl.layout.monitors[0]
+    geometry = [(m.id, m.x, m.y, m.width, m.height, m.room_x, m.room_y, m.room_yaw)
+                for m in ctl.layout.monitors]
+    listener = (ctl.layout.listener_x, ctl.layout.listener_y, ctl.layout.listener_facing)
+    window.on_set_main(monitor.id)
+    assert ctl.layout.reference_mode == "listener"
+    assert ctl.layout.main().id == monitor.id
+    window.view_drop.set_selected(1)
+    assert window.reference_button.get_sensitive()
+    assert window.reference_button.get_label() == "Clear main"
+    window.reference_button.emit("clicked")
+    assert ctl.layout.main() is None
+    assert ctl.layout.reference_mode == "listener"
+    assert geometry == [(m.id, m.x, m.y, m.width, m.height, m.room_x, m.room_y, m.room_yaw)
+                        for m in ctl.layout.monitors]
+    assert listener == (ctl.layout.listener_x, ctl.layout.listener_y, ctl.layout.listener_facing)
+    assert not window.reference_button.get_sensitive()
+
+
+def test_output_popup_choices_keep_full_identifiers(room_window):
+    from gi.repository import Gtk
+    window = room_window
+    candidates = [s for s in window.controller.sinks if not s.is_virtual and s.kind != "headphones"]
+    assert len(candidates) >= 2
+    texts = [window._output_choice_text(s.name, candidates) for s in candidates]
+    assert len(set(texts)) == len(texts)
+    for sink, text in zip(candidates, texts):
+        assert sink.name in text
+        assert sink.description in text
+    dropdowns = [w for w in _descendants(window.group_outputs) if isinstance(w, Gtk.DropDown)]
+    assert dropdowns
+    for dropdown in dropdowns:
+        assert dropdown.get_list_factory() is not None
+        assert dropdown.get_list_factory() != dropdown.get_factory()
+        # Popup labels wrap instead of losing the distinguishing identifier suffix.
+        item = Gtk.ListItem()
+        dropdown.get_list_factory().emit("setup", item)
+        label = item.get_child()
+        assert label.get_wrap()
+        from gi.repository import Pango
+        assert label.get_ellipsize() == Pango.EllipsizeMode.NONE
+        assert dropdown.get_tooltip_text()

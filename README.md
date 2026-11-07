@@ -140,9 +140,9 @@ This explicitly installs a self-contained user-local copy of the GUI, its packag
 
 ### Arrange displays and your listening area
 
-1. Detect or manually add displays. In **Displays · front view**, click to select, drag to reposition, use arrows to nudge, and press R to swap portrait/landscape. M marks a display as main, but a main display is optional in new layouts.
-2. Switch to **Listening area · top down**. Drag the seat and numbered displays into their room positions. R turns the selected object or your facing direction by 15°. Inspector fields allow precise coordinates, yaw and speaker span. Coordinates are centimeters, +X right and +Y down; facing 0° looks toward negative Y.
-3. New layouts use the seat and facing direction as the sound reference. Marking a main display does not move that reference. For an older profile using the legacy main-display reference, choose **Use seated position / no main required** to switch.
+1. Detect or manually add displays. In **Displays**, click to select, drag to reposition, use arrows to nudge, and press R to swap portrait/landscape. M marks a display as main, but a main display is optional in new layouts.
+2. Switch to **Room**. Drag the seat and numbered displays into their room positions. R turns the selected object or your facing direction by 15°. Inspector fields allow precise coordinates, yaw and speaker span. Coordinates are centimeters, +X right and +Y down; facing 0° looks toward negative Y.
+3. New layouts use the seat and facing direction as the sound reference. Marking a main display does not move that reference. For an older profile using the legacy main-display reference, choose **Use seat** to switch.
 4. Initial room geometry is an explicitly approximate projection, not a measurement. Unconfirmed display positions follow horizontal front-view arrangement, while front-view height never becomes room depth. The seat initially stays centered. Moving or confirming a room object protects its room placement from later front-view edits; manually moving the seat protects its placement too.
 
 The same monitor numbers identify displays in both views. Standalone speakers have S-number labels. Portrait/landscape describes the screen, while room yaw describes its angle around the seat. Neither operation automatically calibrates speaker wiring.
@@ -152,7 +152,7 @@ The same monitor numbers identify displays in both views. Standalone speakers ha
 1. Detect outputs or use demo fixtures. Map each display to its actual output, or use **Add speaker** for a standalone wired, USB or Bluetooth speaker.
 2. Known headphones and virtual sinks are excluded. Unknown outputs require explicit confirmation that they are speakers, not headphones. Bluetooth transport alone is not evidence of a speaker.
 3. Set and confirm the number of physical drivers yourself. Reported audio channels do not prove a physical driver count. A newly added standalone speaker starts with one unconfirmed driver rather than guessing from stereo channels.
-4. Use **Set channel order** to assign a discovered channel label to every physical slot in the order shown. Labels such as FL, FR and FC are retained, but discovery order is not assumed to be physical wiring order. Missing, duplicate or unknown labels block confirmation/export; the editor never invents AUX labels.
+4. Use **Set order…** to assign a discovered channel label to every physical slot in the order shown. Labels such as FL, FR and FC are retained, but discovery order is not assumed to be physical wiring order. Missing, duplicate or unknown labels block confirmation/export; the editor never invents AUX labels.
 5. Place speakers in the listening area and inspect the gain preview. Disconnected mappings remain visible and removable; export blocks disconnected targets instead of routing to another output.
 
 Stable slot identities survive placement, yaw, screen orientation and list reordering. Changing driver count or mapped output clears channel-order confirmation. Speaker edge is explicitly selected in front-view coordinates; screen rotation does not silently relocate the edge or verify channel wiring.
@@ -209,3 +209,9 @@ dbus-run-session -- python3 scripts/preview_demo.py
 ```
 
 This QA-only helper starts a fixture-only GUI with a temporary Broadway service bound to `127.0.0.1` (default port 8731). Open the printed localhost URL and stop it with Ctrl-C; it also has a one-hour limit. The helper is not needed to launch or install the application, and its localhost service is not part of normal GUI operation.
+
+### Workspace navigation
+
+The native editor opens in dark mode. Use **Displays / Room** above the canvas to switch between front elevation and independent top-down placement. The right inspector separates **Layout**, **Audio**, and **Preview**. Select a device to edit it; audio mappings expand to show confirmation and channel-order controls. **Sound reference → Use seat** removes the main-display requirement; the row shows when the seat is already active. **Preview → Source format** chooses Stereo or 5.1 as the fixed exported sink input format, not automatic live-source detection. Saving and exporting remain explicit and never apply live routing.
+
+Reproduce the fixture-only native screenshots with `python3 scripts/capture_gui.py`. This uses a private Broadway display, not the desktop or real audio hardware.
