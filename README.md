@@ -104,6 +104,18 @@ The `toggle-audio.sh` script dynamically queries WirePlumber to find the current
 
 `monitor-layout-gui.py` is a native GTK4/Libadwaita editor for monitor and standalone-speaker layouts. It does not run or modify the legacy controller, toggle script or fixed `dual-monitor.conf` configuration.
 
+### Screenshots
+
+Captured from the current native GTK interface using demo fixtures only. No live audio devices or personal desktop content are shown.
+
+**Display arrangement:** numbered monitors, portrait/landscape orientation and an optional main display.
+
+![Monitor arrangement with a portrait main display](docs/screenshots/monitor-layout-front.png)
+
+**Listening area:** two angled displays, a movable seated reference and a standalone speaker. No main display is required. The Bluetooth speaker is illustrative fixture data, not a live connection or acoustic test.
+
+![Top-down listening area with seated reference and a standalone Bluetooth speaker](docs/screenshots/monitor-layout-room.png)
+
 ### Run from source
 
 From the repository root:
