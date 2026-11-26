@@ -35,6 +35,7 @@ The `dual-monitor.conf` configuration maps standard stereo audio into a combined
     ```bash
     cp dual-monitor.conf ~/.config/pipewire/pipewire.conf.d/
     ```
+   Edit the installed `dual-monitor.conf` and set each `node.target` line to the sink name for your setup. You can list available sink names with `pactl list sinks short`.
 3. Review the device names and routing before activation. Follow your distribution’s instructions to reload the relevant user audio services or log out and back in when convenient. This interrupts audio; service names and activation methods vary, and `pipewire-pulse` may not be installed. Keep a backup so you can remove or restore the fragment if activation fails.
 
 ---
@@ -58,18 +59,20 @@ Make sure python, GTK 4, Libadwaita, and PyGObject bindings are installed on you
 1. Copy the script to your local bin path and make it executable:
     ```bash
     mkdir -p ~/.local/bin/
-    cp audio-output-controller.py ~/.local/bin/audio-output-controller
-    chmod +x ~/.local/bin/audio-output-controller
+    cp audio-output-controller.py ~/.local/bin/audio-output-controller.py
+    chmod +x ~/.local/bin/audio-output-controller.py
     ```
 2. Copy the desktop entry shortcut to make it searchable in system launchers:
     ```bash
     mkdir -p ~/.local/share/applications/
     cp audio-output-controller.desktop ~/.local/share/applications/
     ```
+   Before copying, edit the `Exec=` line in `audio-output-controller.desktop` so the path uses your own username and points to `~/.local/bin/audio-output-controller.py`.
 3. Update the desktop entries database to register the app:
     ```bash
     update-desktop-database ~/.local/share/applications
     ```
+4. If the launcher still does not appear, restart your desktop environment or log out and back in, then check the application menu again.
 
 ---
 
